@@ -25,6 +25,17 @@ func decodeI420(frame []byte, width, height int) (image.Image, func(), error) {
 	}, func() {}, nil
 }
 
+func decodeYV12(frame []byte, width, height int) (image.Image, func(), error) {
+	img, release, err := decodeI420(frame, width, height)
+	if err != nil {
+		return img, release, err
+	}
+	// The only difference between I420 and YV12 is the chroma order, so simply swap them
+	yuv := img.(*image.YCbCr)
+	yuv.Cb, yuv.Cr = yuv.Cr, yuv.Cb
+	return yuv, release, err
+}
+
 func decodeNV21(frame []byte, width, height int) (image.Image, func(), error) {
 	yi := width * height
 	ci := yi + width*height/2

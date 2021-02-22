@@ -11,6 +11,7 @@ var decoderMap = map[Format]decoderFunc{
 	FormatNV12: decodeNV12,
 	FormatYUY2: decodeYUY2,
 	FormatUYVY: decodeUYVY,
+	FormatYV12: decodeYV12,
 	FormatMJPG: decodeMJPG,
 }
 
