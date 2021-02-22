@@ -72,3 +72,23 @@ func decodeNV12(frame []byte, width, height int) (image.Image, func(), error) {
 	yuv.Cb, yuv.Cr = yuv.Cr, yuv.Cb
 	return yuv, release, err
 }
+
+func decodeI444(frame []byte, width, height int) (image.Image, func(), error) {
+	yi := width * height
+	cbi := yi * 2
+	cri := yi * 3
+
+	if cri > len(frame) {
+		return nil, func() {}, fmt.Errorf("frame length (%d) less than expected (%d)", len(frame), cri)
+	}
+
+	return &image.YCbCr{
+		Y:              frame[:yi],
+		YStride:        width,
+		Cb:             frame[yi:cbi],
+		Cr:             frame[cbi:cri],
+		CStride:        width,
+		SubsampleRatio: image.YCbCrSubsampleRatio444,
+		Rect:           image.Rect(0, 0, width, height),
+	}, func() {}, nil
+}

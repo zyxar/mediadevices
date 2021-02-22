@@ -7,6 +7,7 @@ import (
 
 var decoderMap = map[Format]decoderFunc{
 	FormatI420: decodeI420,
+	FormatI444: decodeI444,
 	FormatNV21: decodeNV21,
 	FormatNV12: decodeNV12,
 	FormatYUY2: decodeYUY2,
