@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <MacTypes.h>
 #include <stddef.h>
 
 #define MAX_DEVICES                      8
@@ -42,20 +43,12 @@ typedef enum AVBindMediaType {
     AVBindMediaTypeAudio,
 } AVBindMediaType;
 
-typedef enum AVBindFrameFormat {
-    AVBindFrameFormatI420,
-    AVBindFrameFormatNV21,
-    AVBindFrameFormatNV12,
-    AVBindFrameFormatYUY2,
-    AVBindFrameFormatUYVY,
-} AVBindFrameFormat;
-
 typedef void (*AVBindDataCallback)(void *userData, void *buf, int len);
 
 typedef struct AVBindMediaProperty {
     // video property
     int width, height;
-    AVBindFrameFormat frameFormat;
+    FourCharCode fourcc;
     
     // audio property
     

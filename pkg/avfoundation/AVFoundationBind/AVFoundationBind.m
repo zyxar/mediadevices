@@ -38,14 +38,6 @@
         } \
     } while(0)
 
-#define CHK_STATUS(status) \
-    do { \
-        if(status != STATUS_OK) { \
-            retStatus = status; \
-            goto cleanup; \
-        } \
-    } while(0)
-
 @interface VideoDataDelegate : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate>
 
 @property (readonly) AVBindDataCallback mCallback;
@@ -124,58 +116,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 }
 
 @end
-
-STATUS frameFormatToFourCC(AVBindFrameFormat format, FourCharCode *pFourCC) {
-    STATUS retStatus = STATUS_OK;
-    // Useful mapping reference from ffmpeg:
-    // https://github.com/FFmpeg/FFmpeg/blob/c810a9502cebe32e1dd08ee3d0d17053dde44aa9/libavdevice/avfoundation.m#L53-L80
-    switch (format) {
-        case AVBindFrameFormatI420:
-            *pFourCC = kCVPixelFormatType_420YpCbCr8Planar;
-            break;
-        case AVBindFrameFormatNV21:
-            *pFourCC = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
-            break;
-        case AVBindFrameFormatNV12:
-            *pFourCC = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
-            break;
-        case AVBindFrameFormatUYVY:
-            *pFourCC = kCVPixelFormatType_422YpCbCr8;
-            break;
-        case AVBindFrameFormatYUY2:
-            *pFourCC = kCVPixelFormatType_422YpCbCr8_yuvs;
-            break;
-        // TODO: Add the rest of frame formats
-        default:
-            retStatus = STATUS_UNSUPPORTED_FRAME_FORMAT;
-    }
-    return retStatus;
-}
-
-STATUS frameFormatFromFourCC(FourCharCode fourCC, AVBindFrameFormat *pFormat) {
-    STATUS retStatus = STATUS_OK;
-    switch (fourCC) {
-        case kCVPixelFormatType_420YpCbCr8Planar:
-            *pFormat = AVBindFrameFormatI420;
-            break;
-        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
-            *pFormat = AVBindFrameFormatNV21;
-            break;
-        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
-            *pFormat = AVBindFrameFormatNV12;
-            break;
-        case kCVPixelFormatType_422YpCbCr8:
-            *pFormat = AVBindFrameFormatUYVY;
-            break;
-        case kCVPixelFormatType_422YpCbCr8_yuvs:
-            *pFormat = AVBindFrameFormatYUY2;
-            break;
-         // TODO: Add the rest of frame formats
-         default:
-             retStatus = STATUS_UNSUPPORTED_FRAME_FORMAT;
-     }
-    return retStatus;
-}
 
 
 STATUS AVBindDevices(AVBindMediaType mediaType, PAVBindDevice *ppDevices, int *pLen) {
@@ -277,13 +217,10 @@ STATUS AVBindSessionOpen(PAVBindSession pSession,
                                         withUserData: pUserData];
 
         AVCaptureVideoDataOutput *pOutput = [[AVCaptureVideoDataOutput alloc] init];
-        FourCharCode fourCC;
-        CHK_STATUS(frameFormatToFourCC(property.frameFormat, &fourCC));
-
         pOutput.videoSettings = @{
             (id)kCVPixelBufferWidthKey: @(property.width),
             (id)kCVPixelBufferHeightKey: @(property.height),
-            (id)kCVPixelBufferPixelFormatTypeKey: @(fourCC),
+            (id)kCVPixelBufferPixelFormatTypeKey: @(property.fourcc),
         };
         pOutput.alwaysDiscardsLateVideoFrames = YES;
         dispatch_queue_t queue =
@@ -316,16 +253,6 @@ cleanup:
     return retStatus;
 }
 
-static NSString* FourCCString(FourCharCode code) {
-    NSString *result = [NSString stringWithFormat:@"%c%c%c%c",
-                        (code >> 24) & 0xff,
-                        (code >> 16) & 0xff,
-                        (code >> 8) & 0xff,
-                        code & 0xff];
-    NSCharacterSet *characterSet = [NSCharacterSet whitespaceCharacterSet];
-    return [result stringByTrimmingCharactersInSet:characterSet];
-}
-
 STATUS AVBindSessionProperties(PAVBindSession pSession, PAVBindMediaProperty *ppProperties, int *pLen) {
     STATUS retStatus = STATUS_OK;
     NSAutoreleasePool *refPool = [[NSAutoreleasePool alloc] init];
@@ -333,7 +260,6 @@ STATUS AVBindSessionProperties(PAVBindSession pSession, PAVBindMediaProperty *pp
 
     NSString *refDeviceUID = [NSString stringWithUTF8String: pSession->device.uid];
     AVCaptureDevice *refDevice = [AVCaptureDevice deviceWithUniqueID: refDeviceUID];
-    FourCharCode fourCC;
     CMVideoFormatDescriptionRef videoFormat;
     CMVideoDimensions videoDimensions;
 
@@ -348,12 +274,7 @@ STATUS AVBindSessionProperties(PAVBindSession pSession, PAVBindMediaProperty *pp
         }
 
         if ([refFormat.mediaType isEqual:AVMediaTypeVideo]) {
-            fourCC = CMFormatDescriptionGetMediaSubType(refFormat.formatDescription);
-            if (frameFormatFromFourCC(fourCC, &pProperty->frameFormat) != STATUS_OK) {
-                NSLog(@"[WARNING] skipping %@ %dx%d since it's not supported", FourCCString(fourCC), videoDimensions.width, videoDimensions.height);
-                continue;
-            }
-
+            pProperty->fourcc = CMFormatDescriptionGetMediaSubType(refFormat.formatDescription);
             videoFormat = (CMVideoFormatDescriptionRef) refFormat.formatDescription;
             videoDimensions = CMVideoFormatDescriptionGetDimensions(videoFormat);
             pProperty->height = videoDimensions.height;

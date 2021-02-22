@@ -34,38 +34,55 @@ type Device struct {
 	cDevice C.AVBindDevice
 }
 
-func frameFormatToAVBind(f frame.Format) (C.AVBindFrameFormat, bool) {
-	switch f {
-	case frame.FormatI420:
-		return C.AVBindFrameFormatI420, true
-	case frame.FormatNV21:
-		return C.AVBindFrameFormatNV21, true
-	case frame.FormatNV12:
-		return C.AVBindFrameFormatNV12, true
-	case frame.FormatYUY2:
-		return C.AVBindFrameFormatYUY2, true
-	case frame.FormatUYVY:
-		return C.AVBindFrameFormatUYVY, true
-	default:
-		return 0, false
-	}
+type pixelFormatSpec struct {
+	fmt frame.Format
+	fcc C.FourCharCode
 }
 
-func frameFormatFromAVBind(f C.AVBindFrameFormat) (frame.Format, bool) {
-	switch f {
-	case C.AVBindFrameFormatI420:
-		return frame.FormatI420, true
-	case C.AVBindFrameFormatNV21:
-		return frame.FormatNV21, true
-	case C.AVBindFrameFormatNV12:
-		return frame.FormatNV12, true
-	case C.AVBindFrameFormatYUY2:
-		return frame.FormatYUY2, true
-	case C.AVBindFrameFormatUYVY:
-		return frame.FormatUYVY, true
-	default:
-		return "", false
+// Useful mapping reference from ffmpeg:
+// https://github.com/FFmpeg/FFmpeg/blob/c810a9502cebe32e1dd08ee3d0d17053dde44aa9/libavdevice/avfoundation.m#L53-L80
+var pixelFormats = []pixelFormatSpec{
+	{frame.FormatUYVY, C.kCVPixelFormatType_422YpCbCr8},
+	{frame.FormatI420, C.kCVPixelFormatType_420YpCbCr8Planar},
+	{frame.FormatNV12, C.kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange},
+	{frame.FormatNV21, C.kCVPixelFormatType_420YpCbCr8BiPlanarFullRange},
+	{frame.FormatYUY2, C.kCVPixelFormatType_422YpCbCr8_yuvs},
+	//C.kCVPixelFormatType_1Monochrome,
+	//C.kCVPixelFormatType_16BE555,
+	//C.kCVPixelFormatType_16LE555,
+	//C.kCVPixelFormatType_16BE565,
+	//C.kCVPixelFormatType_16LE565,
+	//C.kCVPixelFormatType_24RGB,
+	//C.kCVPixelFormatType_24BGR,
+	//C.kCVPixelFormatType_32ARGB,
+	//C.kCVPixelFormatType_32BGRA,
+	//C.kCVPixelFormatType_32ABGR,
+	//C.kCVPixelFormatType_32RGBA,
+	//C.kCVPixelFormatType_48RGB,
+	//C.kCVPixelFormatType_4444YpCbCrA8R,
+	//C.kCVPixelFormatType_4444AYpCbCr16,
+	//C.kCVPixelFormatType_444YpCbCr8,
+	//C.kCVPixelFormatType_422YpCbCr16,
+	//C.kCVPixelFormatType_422YpCbCr10,
+	//C.kCVPixelFormatType_444YpCbCr10,
+}
+
+func pixelFormatToFourCharCode(f frame.Format) (C.FourCharCode, bool) {
+	for _, spec := range pixelFormats {
+		if spec.fmt == f {
+			return spec.fcc, true
+		}
 	}
+	return 0, false
+}
+
+func fourCharCodeToPixelFormat(c C.FourCharCode) (frame.Format, bool) {
+	for _, spec := range pixelFormats {
+		if spec.fcc == c {
+			return spec.fmt, true
+		}
+	}
+	return "", false
 }
 
 // Devices uses AVFoundation to query a list of devices based on the media type
@@ -166,15 +183,15 @@ func (session *Session) Close() error {
 // Open start capturing session. As soon as it returns successfully, the data will start
 // flowing. The raw data can be retrieved by using ReadCloser's Read method.
 func (session *Session) Open(property prop.Media) (*ReadCloser, error) {
-	frameFormat, ok := frameFormatToAVBind(property.FrameFormat)
+	fourcc, ok := pixelFormatToFourCharCode(property.FrameFormat)
 	if !ok {
 		return nil, fmt.Errorf("Unsupported frame format")
 	}
 
 	cProperty := C.AVBindMediaProperty{
-		width:       C.int(property.Width),
-		height:      C.int(property.Height),
-		frameFormat: frameFormat,
+		width:  C.int(property.Width),
+		height: C.int(property.Height),
+		fourcc: fourcc,
 	}
 
 	rc := newReadCloser(func() {
@@ -206,7 +223,7 @@ func (session *Session) Properties() []prop.Media {
 	cProperties := (*[1 << 28]C.AVBindMediaProperty)(unsafe.Pointer(cPropertiesPtr))[:cPropertiesLen:cPropertiesLen]
 	var properties []prop.Media
 	for _, cProperty := range cProperties {
-		frameFormat, ok := frameFormatFromAVBind(cProperty.frameFormat)
+		frameFormat, ok := fourCharCodeToPixelFormat(cProperty.fourcc)
 		if ok {
 			properties = append(properties, prop.Media{
 				Video: prop.Video{
