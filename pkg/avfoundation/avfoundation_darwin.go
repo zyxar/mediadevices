@@ -11,8 +11,10 @@ package avfoundation
 // }
 import "C"
 import (
+	"context"
 	"fmt"
 	"io"
+	"sync"
 	"unsafe"
 
 	"github.com/pion/mediadevices/pkg/frame"
@@ -110,43 +112,63 @@ func Devices(mediaType MediaType) ([]Device, error) {
 // ReadCloser is a wrapper around the data callback from AVFoundation. The data received from the
 // the underlying callback can be retrieved by calling Read.
 type ReadCloser struct {
-	dataChan chan []byte
-	id       handleID
-	onClose  func()
+	closeChan <-chan struct{}
+	dataChan  chan []byte
+	id        handleID
+	onClose   func()
 }
 
 func newReadCloser(onClose func()) *ReadCloser {
 	var rc ReadCloser
-	rc.dataChan = make(chan []byte, 1)
-	rc.onClose = onClose
+	var once sync.Once
+	ctx, cancel := context.WithCancel(context.Background())
+	rc.closeChan = ctx.Done()
+	rc.dataChan = make(chan []byte, 128)
 	rc.id = register(rc.dataCb)
+	rc.onClose = func() {
+		cancel()
+		once.Do(func() {
+			if onClose != nil {
+				onClose()
+			}
+			unregister(rc.id)
+		})
+	}
 	return &rc
 }
 
 func (rc *ReadCloser) dataCb(data []byte) {
+	select {
+	case <-rc.closeChan:
+		return
+	default:
+	}
 	// TODO: add a policy for slow reader
-	rc.dataChan <- data
+	select {
+	case <-rc.closeChan:
+	case rc.dataChan <- data:
+	}
 }
 
 // Read reads raw data, the format is determined by the media type and property:
 //   - For video, each call will return a frame.
 //   - For audio, each call will return a chunk which its size configured by Latency
 func (rc *ReadCloser) Read() ([]byte, func(), error) {
-	data, ok := <-rc.dataChan
-	if !ok {
+	select {
+	case <-rc.closeChan:
 		return nil, func() {}, io.EOF
+	default:
 	}
-	return data, func() {}, nil
+	select {
+	case <-rc.closeChan:
+		return nil, func() {}, io.EOF
+	case data := <-rc.dataChan:
+		return data, func() {}, nil
+	}
 }
 
 // Close closes the capturing session, and no data will flow anymore
-func (rc *ReadCloser) Close() {
-	if rc.onClose != nil {
-		rc.onClose()
-	}
-	close(rc.dataChan)
-	unregister(rc.id)
-}
+func (rc *ReadCloser) Close() { rc.onClose() }
 
 // Session represents a capturing session.
 type Session struct {
