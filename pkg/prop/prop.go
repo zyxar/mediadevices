@@ -9,7 +9,7 @@ import (
 	"github.com/pion/mediadevices/pkg/frame"
 )
 
-// MediaConstraints represents set of media propaty constraints.
+// MediaConstraints represents set of media property constraints.
 // Each field constrains property by min/ideal/max range, exact match, or oneof match.
 type MediaConstraints struct {
 	DeviceID StringConstraint
@@ -21,7 +21,7 @@ func (m *MediaConstraints) String() string {
 	return prettifyStruct(m)
 }
 
-// Media stores single set of media propaties.
+// Media stores single set of media properties.
 type Media struct {
 	DeviceID string
 	Video
@@ -67,8 +67,8 @@ type setterFn func(fieldA, fieldB reflect.Value)
 
 // merge merges all the field values from o to p, except zero values. It's guaranteed that setterFn will be called
 // when fieldA and fieldB are not struct.
-func (p *Media) merge(o interface{}, set setterFn) {
-	rp := reflect.ValueOf(p).Elem()
+func (m *Media) merge(o interface{}, set setterFn) {
+	rp := reflect.ValueOf(m).Elem()
 	ro := reflect.ValueOf(o)
 
 	// merge b fields to a recursively
@@ -100,14 +100,14 @@ func (p *Media) merge(o interface{}, set setterFn) {
 	merge(rp, ro)
 }
 
-func (p *Media) Merge(o Media) {
-	p.merge(o, func(fieldA, fieldB reflect.Value) {
+func (m *Media) Merge(o Media) {
+	m.merge(o, func(fieldA, fieldB reflect.Value) {
 		fieldA.Set(fieldB)
 	})
 }
 
-func (p *Media) MergeConstraints(o MediaConstraints) {
-	p.merge(o, func(fieldA, fieldB reflect.Value) {
+func (m *Media) MergeConstraints(o MediaConstraints) {
+	m.merge(o, func(fieldA, fieldB reflect.Value) {
 		switch c := fieldB.Interface().(type) {
 		case IntConstraint:
 			if v, ok := c.Value(); ok {
@@ -139,18 +139,18 @@ func (p *Media) MergeConstraints(o MediaConstraints) {
 
 // FitnessDistance calculates fitness of media property and media constraints.
 // If no media satisfies given constraints, second return value will be false.
-func (p *MediaConstraints) FitnessDistance(o Media) (float64, bool) {
+func (m *MediaConstraints) FitnessDistance(o Media) (float64, bool) {
 	cmps := comparisons{}
-	cmps.add(p.DeviceID, o.DeviceID)
-	cmps.add(p.Width, o.Width)
-	cmps.add(p.Height, o.Height)
-	cmps.add(p.FrameFormat, o.FrameFormat)
-	cmps.add(p.SampleRate, o.SampleRate)
-	cmps.add(p.Latency, o.Latency)
-	cmps.add(p.ChannelCount, o.ChannelCount)
-	cmps.add(p.IsBigEndian, o.IsBigEndian)
-	cmps.add(p.IsFloat, o.IsFloat)
-	cmps.add(p.IsInterleaved, o.IsInterleaved)
+	cmps.add(m.DeviceID, o.DeviceID)
+	cmps.add(m.Width, o.Width)
+	cmps.add(m.Height, o.Height)
+	cmps.add(m.FrameFormat, o.FrameFormat)
+	cmps.add(m.SampleRate, o.SampleRate)
+	cmps.add(m.Latency, o.Latency)
+	cmps.add(m.ChannelCount, o.ChannelCount)
+	cmps.add(m.IsBigEndian, o.IsBigEndian)
+	cmps.add(m.IsFloat, o.IsFloat)
+	cmps.add(m.IsInterleaved, o.IsInterleaved)
 
 	return cmps.fitnessDistance()
 }
