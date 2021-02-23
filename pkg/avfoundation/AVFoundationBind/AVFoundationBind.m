@@ -160,7 +160,6 @@ cleanup:
 struct AVBindSession {
     AVBindDevice device;
     AVCaptureSession *refCaptureSession;
-    AVBindMediaProperty properties[MAX_PROPERTIES];
 };
 
 
@@ -212,10 +211,6 @@ STATUS AVBindSessionOpen(PAVBindSession pSession,
     [refCaptureSession addInput: refInput];
 
     if ([refDevice hasMediaType: AVMediaTypeVideo]) {
-        VideoDataDelegate *pDelegate = [[VideoDataDelegate alloc]
-                                        init: dataCallback
-                                        withUserData: pUserData];
-
         AVCaptureVideoDataOutput *pOutput = [[AVCaptureVideoDataOutput alloc] init];
         pOutput.videoSettings = @{
             (id)kCVPixelBufferWidthKey: @(property.width),
@@ -223,9 +218,13 @@ STATUS AVBindSessionOpen(PAVBindSession pSession,
             (id)kCVPixelBufferPixelFormatTypeKey: @(property.fourcc),
         };
         pOutput.alwaysDiscardsLateVideoFrames = YES;
+        VideoDataDelegate *pDelegate = [[VideoDataDelegate alloc]
+                                        init: dataCallback
+                                        withUserData: pUserData];
         dispatch_queue_t queue =
             dispatch_queue_create("captureQueue", DISPATCH_QUEUE_SERIAL);
         [pOutput setSampleBufferDelegate:pDelegate queue:queue];
+        dispatch_release(queue);
         [refCaptureSession addOutput: pOutput];
     } else {
         // TODO: implement audio pipeline
@@ -260,19 +259,15 @@ STATUS AVBindSessionProperties(PAVBindSession pSession, PAVBindMediaProperty *pp
 
     NSString *refDeviceUID = [NSString stringWithUTF8String: pSession->device.uid];
     AVCaptureDevice *refDevice = [AVCaptureDevice deviceWithUniqueID: refDeviceUID];
+    size_t count = [refDevice.formats count];
+    PAVBindMediaProperty pProperty = (PAVBindMediaProperty) calloc(count, sizeof(AVBindMediaProperty));
+    CHK(pProperty != NULL, STATUS_DEVICE_INIT_FAILED);
+    *ppProperties = pProperty;
+    *pLen = count;
+
     CMVideoFormatDescriptionRef videoFormat;
     CMVideoDimensions videoDimensions;
-
-    memset(pSession->properties, 0, sizeof(pSession->properties));
-    PAVBindMediaProperty pProperty = pSession->properties;
-    int len = 0;
     for (AVCaptureDeviceFormat *refFormat in refDevice.formats) {
-        // TODO: Probably gives a warn to the user
-        if (len >= MAX_PROPERTIES) {
-            NSLog(@"[WARNING] skipping the rest of properties due to MAX_PROPERTIES");
-            break;
-        }
-
         if ([refFormat.mediaType isEqual:AVMediaTypeVideo]) {
             pProperty->fourcc = CMFormatDescriptionGetMediaSubType(refFormat.formatDescription);
             videoFormat = (CMVideoFormatDescriptionRef) refFormat.formatDescription;
@@ -282,13 +277,8 @@ STATUS AVBindSessionProperties(PAVBindSession pSession, PAVBindMediaProperty *pp
         } else {
             // TODO: Get audio properties
         }
-
         pProperty++;
-        len++;
     }
-
-    *ppProperties = pSession->properties;
-    *pLen = len;
 
 cleanup:
 

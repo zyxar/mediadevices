@@ -26,7 +26,6 @@
 #include <stddef.h>
 
 #define MAX_DEVICES                      8
-#define MAX_PROPERTIES                   64
 #define MAX_DEVICE_UID_CHARS             64
 
 typedef const char* STATUS;

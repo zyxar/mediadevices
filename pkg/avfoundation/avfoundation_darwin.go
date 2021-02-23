@@ -218,7 +218,7 @@ func (session *Session) Properties() []prop.Media {
 	if status != nil {
 		return nil
 	}
-
+	defer C.free(unsafe.Pointer(cPropertiesPtr))
 	// https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
 	cProperties := (*[1 << 28]C.AVBindMediaProperty)(unsafe.Pointer(cPropertiesPtr))[:cPropertiesLen:cPropertiesLen]
 	var properties []prop.Media
