@@ -57,18 +57,25 @@ var (
 		{1920, 1200},
 		{2560, 1600},
 	}
+
+	supportedFormats = map[webcam.PixelFormat]frame.Format{
+		webcam.PixelFormat(C.V4L2_PIX_FMT_YUV420): frame.FormatI420,
+		webcam.PixelFormat(C.V4L2_PIX_FMT_YUYV):   frame.FormatYUYV,
+		webcam.PixelFormat(C.V4L2_PIX_FMT_UYVY):   frame.FormatUYVY,
+		webcam.PixelFormat(C.V4L2_PIX_FMT_NV21):   frame.FormatNV21,
+		webcam.PixelFormat(C.V4L2_PIX_FMT_NV12):   frame.FormatNV12,
+		webcam.PixelFormat(C.V4L2_PIX_FMT_MJPEG):  frame.FormatMJPEG,
+	}
 )
 
 // Camera implementation using v4l2
 // Reference: https://linuxtv.org/downloads/v4l-dvb-apis/uapi/v4l/videodev.html#videodev
 type camera struct {
-	path            string
-	cam             *webcam.Webcam
-	formats         map[webcam.PixelFormat]frame.Format
-	reversedFormats map[frame.Format]webcam.PixelFormat
-	started         bool
-	mutex           sync.Mutex
-	cancel          func()
+	path    string
+	cam     *webcam.Webcam
+	started bool
+	mutex   sync.Mutex
+	cancel  func()
 }
 
 func init() {
@@ -112,25 +119,9 @@ func init() {
 }
 
 func newCamera(path string) *camera {
-	formats := map[webcam.PixelFormat]frame.Format{
-		webcam.PixelFormat(C.V4L2_PIX_FMT_YUV420): frame.FormatI420,
-		webcam.PixelFormat(C.V4L2_PIX_FMT_YUYV):   frame.FormatYUYV,
-		webcam.PixelFormat(C.V4L2_PIX_FMT_UYVY):   frame.FormatUYVY,
-		webcam.PixelFormat(C.V4L2_PIX_FMT_NV12):   frame.FormatNV21,
-		webcam.PixelFormat(C.V4L2_PIX_FMT_MJPEG):  frame.FormatMJPEG,
+	return &camera{
+		path: path,
 	}
-
-	reversedFormats := make(map[frame.Format]webcam.PixelFormat)
-	for k, v := range formats {
-		reversedFormats[v] = k
-	}
-
-	c := &camera{
-		path:            path,
-		formats:         formats,
-		reversedFormats: reversedFormats,
-	}
-	return c
 }
 
 func (c *camera) Open() error {
@@ -167,13 +158,23 @@ func (c *camera) Close() error {
 	return nil
 }
 
+func getPixelFormat(f frame.Format) (pf webcam.PixelFormat) {
+	for p, format := range supportedFormats {
+		if f == format {
+			pf = p
+			return
+		}
+	}
+	return
+}
+
 func (c *camera) VideoRecord(p prop.Media) (video.Reader, error) {
 	decoder, err := frame.NewDecoder(p.FrameFormat)
 	if err != nil {
 		return nil, err
 	}
 
-	pf := c.reversedFormats[p.FrameFormat]
+	pf := getPixelFormat(p.FrameFormat)
 	_, _, _, err = c.cam.SetImageFormat(pf, uint32(p.Width), uint32(p.Height))
 	if err != nil {
 		return nil, err
@@ -243,7 +244,7 @@ func (c *camera) Properties() []prop.Media {
 	properties := make([]prop.Media, 0)
 	for format := range c.cam.GetSupportedFormats() {
 		for _, frameSize := range c.cam.GetSupportedFrameSizes(format) {
-			supportedFormat, ok := c.formats[format]
+			supportedFormat, ok := supportedFormats[format]
 			if !ok {
 				continue
 			}
